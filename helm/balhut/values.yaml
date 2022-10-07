@@ -12,3 +12,6 @@ resources:
 service:
   http:
     internalPort: 8080
+
+haya:
+  schedule: 0 0 * * *

@@ -1,6 +1,0 @@
-gcp_project = "entur-dev-1287"
-gcp_storage_project = "entur-ror-dev"
-gcp_resources_project = "entur-ror-dev"
-kube_namespace = "dev"
-bucket_haya_instance_name = "haya-dev"
-bucket_kakka_instance_name = "kakka-dev"
