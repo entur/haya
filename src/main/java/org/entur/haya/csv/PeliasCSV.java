@@ -1,0 +1,93 @@
+package org.entur.haya.csv;
+
+import com.opencsv.CSVWriter;
+import org.entur.geocoder.model.PeliasDocument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.*;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static org.entur.geocoder.model.Parents.wrapValidParentFieldsInLists;
+import static org.entur.haya.csv.CSVHeaders.*;
+
+public final class PeliasCSV {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PeliasCSV.class);
+    private static final List<String> availableLanguageCodes = List.of("en", "et", "fi", "fr", "no", "ru", "se", "sv", "fk");
+    private static final List<String> csvHeaders = Stream.of(
+                    ID, INDEX, TYPE, NAME, ALIAS,
+                    LATITUDE, LONGITUDE, ADDRESS_STREET,
+                    ADDRESS_NUMBER, ADDRESS_ZIP, POPULARITY,
+                    CATEGORY, DESCRIPTION, SOURCE, SOURCE_ID,
+                    LAYER, PARENT)
+            .toList();
+
+    private static final List<String> allHeaders = Stream.concat(
+                    csvHeaders.stream(),
+                    Stream.concat(
+                            availableLanguageCodes.stream().map(code -> makeCsvHeaderForLanguageCode(NAME, code)),
+                            availableLanguageCodes.stream().map(code -> makeCsvHeaderForLanguageCode(ALIAS, code))))
+            .toList();
+
+    public static InputStream create(Stream<PeliasDocument> peliasDocuments) {
+        LOGGER.debug("Creating CSV file for pelias documents");
+
+        try {
+            File file = File.createTempFile("output", "csv");
+            try (CSVWriter writer = new CSVWriter(new FileWriter(file.toPath().toString()))) {
+                writer.writeNext(allHeaders.toArray(String[]::new));
+                writer.writeAll(peliasDocuments
+                        .map(PeliasCSV::createStringArray)
+                        .toList());
+            }
+            return new FileInputStream(file);
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private static String[] createStringArray(PeliasDocument peliasDocument) {
+        return Stream.concat(
+                csvHeaders.stream().map(header -> getCSVValueForHeader(peliasDocument, header)),
+                Stream.concat(
+                        availableLanguageCodes.stream().map(code -> CSVValue(peliasDocument.getAlternativeNames().get(code))),
+                        availableLanguageCodes.stream().map(code -> CSVValue(peliasDocument.getAlternativeAlias().get(code)))
+                )).map(CSVValue::toString).toArray(String[]::new);
+    }
+
+    private static CSVValue getCSVValueForHeader(PeliasDocument peliasDocument, String header) {
+        CSVValue csvValue = switch (header) {
+            case ID, SOURCE_ID -> CSVValue(peliasDocument.getSourceId());
+            case INDEX -> CSVValue(peliasDocument.getIndex());
+            case TYPE, LAYER -> CSVValue(peliasDocument.getLayer());
+            case SOURCE -> CSVValue(peliasDocument.getSource());
+            case POPULARITY -> CSVValue(peliasDocument.getPopularity());
+            case CATEGORY -> CSVJsonValue(peliasDocument.getCategories());
+            case DESCRIPTION -> CSVJsonValue(peliasDocument.getDescriptionMap());
+            case NAME -> CSVValue(peliasDocument.getDefaultName());
+            case ALIAS -> peliasDocument.getDefaultAlias() != null ? CSVJsonValue(List.of(peliasDocument.getDefaultAlias())) : null;
+            case LATITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lat()) : null;
+            case LONGITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lon()) : null;
+            case PARENT -> peliasDocument.getParents() != null ? CSVJsonValue(wrapValidParentFieldsInLists(peliasDocument.getParents().parents())) : null;
+            case ADDRESS_STREET -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().street()) : null;
+            case ADDRESS_NUMBER -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().number()) : null;
+            case ADDRESS_ZIP -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().zip()) : null;
+            default -> null;
+        };
+        return csvValue != null ? csvValue : CSVValue("");
+    }
+
+    private static String makeCsvHeaderForLanguageCode(String prefix, String languageCode) {
+        return prefix + "_" + languageCode;
+    }
+
+    private static CSVValue CSVValue(Object value) {
+        return new CSVValue(value, false);
+    }
+
+    private static CSVValue CSVJsonValue(Object value) {
+        return new CSVValue(value, true);
+    }
+}

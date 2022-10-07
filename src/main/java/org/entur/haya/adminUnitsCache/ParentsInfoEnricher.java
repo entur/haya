@@ -14,7 +14,7 @@
  *
  */
 
-package org.entur.haya.peliasDocument.stopPlacestoPeliasDocument;
+package org.entur.haya.adminUnitsCache;
 
 import org.entur.geocoder.model.GeoPoint;
 import org.entur.geocoder.model.ParentType;
@@ -24,42 +24,29 @@ import org.entur.haya.adminUnitsCache.AdminUnit;
 import org.entur.haya.adminUnitsCache.AdminUnitsCache;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class ParentsInfoEnricher {
 
-        private static final Logger logger = LoggerFactory.getLogger(ParentsInfoEnricher.class);
-
     private final AdminUnitsCache adminUnitsCache;
-    private final AtomicInteger integer;
     private final GeometryFactory geometryFactory = new GeometryFactory();
 
-    public ParentsInfoEnricher(AdminUnitsCache adminUnitsCache, AtomicInteger integer) {
+    public ParentsInfoEnricher(AdminUnitsCache adminUnitsCache) {
         this.adminUnitsCache = adminUnitsCache;
-        this.integer = integer;
     }
 
     public PeliasDocument enrichParentsInfo(PeliasDocument peliasDocument) {
+
         if (peliasDocument.getParents() == null || peliasDocument.getSource() == null) {
-            logger.debug("Missing Parents or Parents.source " + peliasDocument);
-            return peliasDocument;
-//            throw new IllegalArgumentException("Either Parents or Parents.source is null in the given PeliasDocument");
+            throw new IllegalArgumentException("Either Parents or Parents.source is null in the given PeliasDocument");
         }
 
         if (peliasDocument.getParents().isOrphan()) {
-            logger.debug("Orphan");
             tryAddingParentsForGivenRef(null, peliasDocument.getCenterPoint(), peliasDocument.getParents());
         } else if (peliasDocument.getParents().hasParentType(ParentType.UNKNOWN)) {
-//            logger.debug("Unknown");
             tryAddingParentsForGivenRef(peliasDocument.getParents().idFor(ParentType.UNKNOWN), peliasDocument.getCenterPoint(), peliasDocument.getParents());
         } else if (peliasDocument.getParents().hasParentType(ParentType.LOCALITY)) {
-            logger.debug("Locality");
             tryAddingParentsOfLocality(peliasDocument.getParents().idFor(ParentType.LOCALITY), peliasDocument.getCenterPoint(), peliasDocument.getParents());
         } else if (peliasDocument.getParents().hasParentType(ParentType.COUNTY)) {
-            logger.debug("County");
             tryAddingParentsOfCounty(peliasDocument.getParents().idFor(ParentType.COUNTY), peliasDocument.getCenterPoint(), peliasDocument.getParents());
         }
 
@@ -67,34 +54,50 @@ public class ParentsInfoEnricher {
     }
 
     private void tryAddingParentsForGivenRef(String ref, GeoPoint centerPoint, Parents parents) {
-        // Assuming the parentType is Locality
-        var locality = findAdminUnitForParentType(ParentType.LOCALITY, ref, centerPoint);
+        if (!tryAddParentsFromCacheForGivenRef(ref, centerPoint, parents)) {
+            tryAddParentsWithReverseGeoCodingForGivenCenterPoint(centerPoint, parents);
+        }
+    }
 
+    private boolean tryAddParentsFromCacheForGivenRef(String ref, GeoPoint centerPoint, Parents parents) {
+        AdminUnit localityFromCache = adminUnitsCache.getAdminUnitForParentType(ref, ParentType.LOCALITY);
+        if (localityFromCache != null) {
+            parents.addOrReplaceParent(ParentType.LOCALITY, localityFromCache.id(), localityFromCache.name());
+            addParentsOfLocality(localityFromCache, parents, centerPoint);
+            return true;
+        }
+
+        AdminUnit countyFromCache = adminUnitsCache.getAdminUnitForParentType(ref, ParentType.COUNTY);
+        if (countyFromCache != null) {
+            parents.addOrReplaceParent(ParentType.COUNTY, countyFromCache.id(), countyFromCache.name());
+            tryAddingCountryWithCountryCode(countyFromCache.countryRef(), parents, centerPoint);
+            return true;
+        }
+
+        AdminUnit countryFromCache = adminUnitsCache.getAdminUnitForParentType(ref, ParentType.COUNTRY);
+        if (countryFromCache != null) {
+            addCountryToParents(countryFromCache, parents);
+            return true;
+        }
+        return false;
+    }
+
+    private void tryAddParentsWithReverseGeoCodingForGivenCenterPoint(GeoPoint centerPoint, Parents parents) {
+        AdminUnit locality = findAdminUnitByReverseGeocoding(ParentType.LOCALITY, centerPoint);
         if (locality != null) {
             parents.addOrReplaceParent(ParentType.LOCALITY, locality.id(), locality.name());
             addParentsOfLocality(locality, parents, centerPoint);
-            return;
         }
 
-        // Assuming the parentType is county
-        var county = findAdminUnitForParentType(ParentType.COUNTY, ref, centerPoint);
+        AdminUnit county = findAdminUnitByReverseGeocoding(ParentType.COUNTY, centerPoint);
         if (county != null) {
             parents.addOrReplaceParent(ParentType.COUNTY, county.id(), county.name());
             tryAddingCountryWithCountryCode(county.countryRef(), parents, centerPoint);
-            return;
         }
 
-        // Assuming the parentType is country
-        logger.debug("its country ref " + ref);
-        var country = adminUnitsCache.getAdminUnitForParentType(ref, ParentType.COUNTRY);
+        AdminUnit country = findAdminUnitByReverseGeocoding(ParentType.COUNTRY, centerPoint);
         if (country != null) {
-            logger.debug("Found in cache");
             addCountryToParents(country, parents);
-        } else {
-            AdminUnit countryByReverseGeocode = findAdminUnitByReverseGeocoding(ParentType.COUNTRY, centerPoint);
-            if (countryByReverseGeocode != null) {
-                addCountryToParents(countryByReverseGeocode, parents);
-            }
         }
     }
 
@@ -155,18 +158,12 @@ public class ParentsInfoEnricher {
     }
 
     private AdminUnit findAdminUnitByReverseGeocoding(ParentType parentType, GeoPoint centerPoint) {
-        logger.debug("Called for: " + parentType + " " + integer.incrementAndGet());
         var point = geometryFactory.createPoint(new Coordinate(centerPoint.lon(), centerPoint.lat()));
-
-        AdminUnit adminUnit = switch (parentType) {
+        return switch (parentType) {
             case LOCALITY -> adminUnitsCache.getLocalityForPoint(point);
             case COUNTY -> adminUnitsCache.getCountyForPoint(point);
             case COUNTRY -> adminUnitsCache.getCountryForPoint(point);
             default -> null;
         };
-
-        logger.debug("Found " + parentType + ": " + (adminUnit != null));
-
-        return adminUnit;
     }
 }

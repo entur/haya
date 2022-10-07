@@ -2,7 +2,6 @@ package org.entur.haya.camel;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.processor.aggregate.GroupedExchangeAggregationStrategy;
-import org.entur.geocoder.model.PeliasDocument;
 
 import java.util.stream.Stream;
 
@@ -16,7 +15,6 @@ public class ConcatStreamAggregationStrategy extends GroupedExchangeAggregationS
             );
             return newExchange;
         }
-
         return newExchange;
     }
 }

@@ -1,15 +1,12 @@
 package org.entur.haya.adminUnitsCache;
 
 import org.entur.geocoder.model.ParentType;
-import org.entur.haya.peliasDocument.stopPlacestoPeliasDocument.ParentsInfoEnricher;
 import org.entur.netex.index.api.NetexEntitiesIndex;
 import org.locationtech.jts.geom.Point;
 import org.rutebanken.netex.model.GroupOfStopPlaces;
 import org.rutebanken.netex.model.IanaCountryTldEnumeration;
 import org.rutebanken.netex.model.TopographicPlace;
 import org.rutebanken.netex.model.ValidBetween;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -22,8 +19,6 @@ public record AdminUnitsCache(Map<String, AdminUnit> countries,
                               Map<String, AdminUnit> counties,
                               Map<String, AdminUnit> localities,
                               List<GroupOfStopPlaces> groupOfStopPlaces) {
-
-    private static final Logger logger = LoggerFactory.getLogger(AdminUnitsCache.class);
 
     public static AdminUnitsCache buildNewCache(NetexEntitiesIndex netexEntitiesIndex) {
 
@@ -85,11 +80,10 @@ public record AdminUnitsCache(Map<String, AdminUnit> countries,
     }
 
     public AdminUnit getCountryForCountryRef(String countryRef) {
-        AdminUnit adminUnit1 = countries.values().stream()
+        return countries.values().stream()
                 .filter(country -> country.countryRef() != null)
                 .filter(adminUnit -> adminUnit.countryRef().equals(countryRef))
                 .findFirst().orElse(null);
-        return adminUnit1;
     }
 
     public AdminUnit getLocalityForPoint(Point point) {
@@ -105,7 +99,7 @@ public record AdminUnitsCache(Map<String, AdminUnit> countries,
     }
 
     private static AdminUnit getAdminUnitForGivenPoint(Point point, Collection<AdminUnit> adminUnits) {
-        return adminUnits.parallelStream().filter(adminUnit -> {
+        return adminUnits.stream().filter(adminUnit -> {
             var polygon = adminUnit.geometry();
             return polygon != null && polygon.covers(point);
         }).findFirst().orElse(null);

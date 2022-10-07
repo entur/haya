@@ -1,19 +1,17 @@
 package org.entur.haya.camel;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.Message;
-import org.apache.camel.processor.aggregate.GroupedBodyAggregationStrategy;
 import org.apache.camel.processor.aggregate.UseLatestAggregationStrategy;
 import org.entur.geocoder.Utilities;
 import org.entur.geocoder.blobStore.BlobStoreFiles;
 import org.entur.geocoder.camel.ErrorHandlerRouteBuilder;
+import org.entur.geocoder.csv.CSVReader;
 import org.entur.geocoder.model.PeliasDocument;
 import org.entur.haya.adminUnitsCache.AdminUnitsCache;
 import org.entur.haya.blobStore.HayaBlobStoreService;
 import org.entur.haya.blobStore.KakkaBlobStoreService;
-import org.entur.haya.csv.CSVCreator2;
-import org.entur.haya.peliasDocument.stopPlacestoPeliasDocument.CSVReader2;
-import org.entur.haya.peliasDocument.stopPlacestoPeliasDocument.ParentsInfoEnricher;
+import org.entur.haya.csv.*;
+import org.entur.haya.adminUnitsCache.ParentsInfoEnricher;
 import org.entur.netex.NetexParser;
 import org.entur.netex.index.api.NetexEntitiesIndex;
 import org.slf4j.Logger;
@@ -28,21 +26,17 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Component
-public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
+public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
 
-    private static final Logger logger = LoggerFactory.getLogger(AddressesDataRouteBuilder.class);
+    private static final Logger logger = LoggerFactory.getLogger(HayaRouteBuilder.class);
 
     private static final String OUTPUT_FILENAME_HEADER = "hayaOutputFilename";
     private static final String ADMIN_UNITS_CACHE_PROPERTY = "AdminUnitsCache";
+    public static final String COMPLETION_SIZE = "CompletionSize";
 
     @Value("${blobstore.gcs.kakka.adminUnits.file:tiamat/geocoder/tiamat_export_geocoder_latest.zip}")
     private String adminUnitsFile;
@@ -56,7 +50,7 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
     private final KakkaBlobStoreService kakkaBlobStoreService;
     private final HayaBlobStoreService hayaBlobStoreService;
 
-    public AddressesDataRouteBuilder(
+    public HayaRouteBuilder(
             KakkaBlobStoreService kakkaBlobStoreService,
             HayaBlobStoreService hayaBlobStoreService,
             @Value("${haya.camel.redelivery.max:3}") int maxRedelivery,
@@ -73,27 +67,18 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
         from("direct:makeCSV")
                 .to("direct:cacheAdminUnits")
                 .process(this::listPeliasDocumentCSVFiles)
-                .process(exchange -> {
-                    Message in = exchange.getIn();
-                    List<BlobStoreFiles.File> files = in.getBody(BlobStoreFiles.class).getFiles();
-                    in.setBody(files);
-                    in.setHeader("CompletionSize", files.size());
-                })
                 .split().body()
                 .process(this::loadPeliasDocumentCSVFile)
                 .process(this::unzipPeliasDocumentsCSVFileToWorkingDirectory)
-                .aggregate(constant(true), new UseLatestAggregationStrategy()).completionSize(header("CompletionSize"))
+                .aggregate(constant(true), new UseLatestAggregationStrategy())
+                .completionSize(header(COMPLETION_SIZE))
                 .process(this::listUnzippedPeliasDocumentFiles)
                 .split().body()
                 .process(this::readPeliasDocumentsCSVFile)
-                .aggregate(constant(true), new ConcatStreamAggregationStrategy()).completionSize(header("CompletionSize"))
                 .process(this::enrichWithParentInfo)
-                .process(exchange -> {
-                    Stream<PeliasDocument> peliasDocumentStream = exchange.getIn().getBody(Stream.class);
-                    CSVCreator2.create(peliasDocumentStream);
-                })
-//                .process(this::createPeliasDocumentsForAllIndividualAddresses)
-//                .process(this::addPeliasDocumentForStreets)
+                .aggregate(constant(true), new ConcatStreamAggregationStrategy())
+                .completionSize(header(COMPLETION_SIZE))
+                .process(this::terminateStreamToCreatePeliasCSV)
                 .process(this::setOutputFilenameHeader)
                 .process(this::zipCSVFile)
                 .process(this::uploadCSVFile)
@@ -147,29 +132,27 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
     private void buildAdminUnitCache(Exchange exchange) {
         logger.debug("Building admin units cache");
         var netexEntitiesIndex = exchange.getIn().getBody(NetexEntitiesIndex.class);
-        var adminUnitsCache = AdminUnitsCache.buildNewCache(netexEntitiesIndex);
-        exchange.setProperty(ADMIN_UNITS_CACHE_PROPERTY, adminUnitsCache);
+        exchange.setProperty(ADMIN_UNITS_CACHE_PROPERTY, AdminUnitsCache.buildNewCache(netexEntitiesIndex));
     }
 
     private void listPeliasDocumentCSVFiles(Exchange exchange) {
-        logger.debug("Loading pelias documents csv files");
-        exchange.getIn().setBody(
-                hayaBlobStoreService.listBlobStoreFiles(peliasDocumentsFolder),
-                InputStream.class
-        );
+        logger.debug("Listing the pelias documents zip files");
+
+        BlobStoreFiles blobStoreFiles = hayaBlobStoreService.listBlobStoreFiles(peliasDocumentsFolder);
+        List<BlobStoreFiles.File> files = blobStoreFiles.getFiles();
+
+        exchange.getIn().setHeader(COMPLETION_SIZE, files.size());
+        exchange.getIn().setBody(files);
     }
 
     private void loadPeliasDocumentCSVFile(Exchange exchange) {
         BlobStoreFiles.File file = exchange.getIn().getBody(BlobStoreFiles.File.class);
         logger.debug("Loading pelias documents file: " + file.getFileNameOnly());
-        exchange.getIn().setBody(
-                hayaBlobStoreService.getBlob(file.getName()),
-                InputStream.class
-        );
+        exchange.getIn().setBody(hayaBlobStoreService.getBlob(file.getName()));
     }
 
     private void unzipPeliasDocumentsCSVFileToWorkingDirectory(Exchange exchange) {
-        logger.debug("Unzipping pelias documents file " + exchange.getIn().getHeader("pelias-document-filename"));
+        logger.debug("Unzipping the file ");
         ZipUtilities.unzipFile(
                 exchange.getIn().getBody(InputStream.class),
                 hayaWorkDir + "/pelias-document-csv"
@@ -179,7 +162,9 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
     private void listUnzippedPeliasDocumentFiles(Exchange exchange) {
         logger.debug("List unzipped pelias document files");
         try (Stream<Path> paths = Files.walk(Paths.get(hayaWorkDir + "/pelias-document-csv"))) {
-            exchange.getIn().setBody(paths.filter(Utilities::isValidFile).toList());
+            List<Path> pathList = paths.filter(Utilities::isValidFile).toList();
+            exchange.getIn().setHeader(COMPLETION_SIZE, pathList.size());
+            exchange.getIn().setBody(pathList);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -188,7 +173,7 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
     private void readPeliasDocumentsCSVFile(Exchange exchange) {
         Path filePath = exchange.getIn().getBody(Path.class);
         logger.debug("Read addresses CSV file " + filePath.getFileName());
-        exchange.getIn().setBody(CSVReader2.read(filePath));
+        exchange.getIn().setBody(CSVReader.read(filePath));
     }
 
     private void enrichWithParentInfo(Exchange exchange) {
@@ -196,60 +181,21 @@ public class AddressesDataRouteBuilder extends ErrorHandlerRouteBuilder {
         @SuppressWarnings("unchecked")
         Stream<PeliasDocument> peliasDocumentStream = exchange.getIn().getBody(Stream.class);
         AdminUnitsCache adminUnitsCache = exchange.getProperty(ADMIN_UNITS_CACHE_PROPERTY, AdminUnitsCache.class);
-        AtomicInteger integer = new AtomicInteger(0);
-        ParentsInfoEnricher parentsInfoEnricher = new ParentsInfoEnricher(adminUnitsCache, integer);
+        ParentsInfoEnricher parentsInfoEnricher = new ParentsInfoEnricher(adminUnitsCache);
         exchange.getIn().setBody(
                 peliasDocumentStream
-                        .parallel()
                         .map(parentsInfoEnricher::enrichParentsInfo)
         );
     }
-/*
-    private void createPeliasDocumentsForAllIndividualAddresses(Exchange exchange) {
-        logger.debug("Create peliasDocuments for addresses");
 
-        Collection<KartverketAddress> addresses = exchange.getIn().getBody(Collection.class);
-        AdminUnitsCache adminUnitsCache = exchange.getProperty(ADMIN_UNITS_CACHE_PROPERTY, AdminUnitsCache.class);
-
-        long startTime = System.nanoTime();
-
-        // Create documents for all individual addresses
-        List<PeliasDocument> peliasDocuments = addresses.parallelStream()
-                .map(peliasDocument -> addressMapper.toPeliasDocument(peliasDocument, adminUnitsCache))
-                .collect(Collectors.toList());
-
-        long endTime = System.nanoTime();
-        long duration = (endTime - startTime) / 1000000;
-
-        logger.debug("Create documents for all individual addresses duration(ms): " + duration);
-
-        exchange.getIn().setBody(peliasDocuments);
+    private void terminateStreamToCreatePeliasCSV(Exchange exchange) {
+        logger.debug("Create Pelias CSV file");
+        @SuppressWarnings("unchecked")
+        Stream<PeliasDocument> peliasDocumentStream = exchange.getIn().getBody(Stream.class);
+        exchange.getIn().setBody(
+                PeliasCSV.create(peliasDocumentStream)
+        );
     }
-
-    private void addPeliasDocumentForStreets(Exchange exchange) {
-        logger.debug("Add peliasDocuments for streets.");
-
-        List<PeliasDocument> peliasDocuments = exchange.getIn().getBody(List.class);
-
-        long startTime = System.nanoTime();
-
-        Comparator<PeliasDocument> peliasDocumentComparator = Comparator
-                .comparing(PeliasDocument::addressParts, Comparator.comparing(AddressParts::getStreet))
-                .thenComparing(PeliasDocument::parent, Comparator.comparing((Parent parent) -> parent.getParentFields().get(Parent.FieldName.LOCALITY).id()));
-
-        List<PeliasDocument> sortedPeliasDocuments = peliasDocuments.stream().sorted(peliasDocumentComparator).toList();
-
-        //Create separate document per unique street
-        peliasDocuments.addAll(addressToStreetMapper.createStreetPeliasDocumentsFromAddresses(peliasDocuments));
-
-        long endTime = System.nanoTime();
-        long duration = (endTime - startTime) / 1000000;
-
-        logger.debug("Add peliasDocuments for streets duration(ms): " + duration);
-
-        exchange.getIn().setBody(peliasDocuments);
-    }
-*/
 
     private void setOutputFilenameHeader(Exchange exchange) {
         exchange.getIn().setHeader(
