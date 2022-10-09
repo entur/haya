@@ -3,6 +3,7 @@ package org.entur.haya.camel;
 import org.apache.camel.Exchange;
 import org.apache.camel.processor.aggregate.UseLatestAggregationStrategy;
 import org.entur.geocoder.Utilities;
+import org.entur.geocoder.ZipUtilities;
 import org.entur.geocoder.blobStore.BlobStoreFiles;
 import org.entur.geocoder.camel.ErrorHandlerRouteBuilder;
 import org.entur.geocoder.csv.CSVReader;
@@ -41,8 +42,8 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
     @Value("${blobstore.gcs.kakka.adminUnits.file:tiamat/geocoder/tiamat_export_geocoder_latest.zip}")
     private String adminUnitsFile;
 
-    @Value("${blobstore.gcs.haya.peliasDocuments.folder:pelias-documents}")
-    private String peliasDocumentsFolder;
+    @Value("${blobstore.gcs.haya.import.folder:import}")
+    private String importFolder;
 
     @Value("${haya.workdir:/tmp/haya/geocoder}")
     private String hayaWorkDir;
@@ -82,7 +83,7 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
                 .process(this::setOutputFilenameHeader)
                 .process(this::zipCSVFile)
                 .process(this::uploadCSVFile)
-                .process(this::updateCurrentFile);
+                .process(this::copyCSVFileAsLatestToConfiguredBucket);
 
         from("direct:cacheAdminUnits")
                 .process(this::loadAdminUnitsFile)
@@ -138,7 +139,7 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
     private void listPeliasDocumentCSVFiles(Exchange exchange) {
         logger.debug("Listing the pelias documents zip files");
 
-        BlobStoreFiles blobStoreFiles = hayaBlobStoreService.listBlobStoreFiles(peliasDocumentsFolder);
+        BlobStoreFiles blobStoreFiles = hayaBlobStoreService.listBlobStoreFiles(importFolder);
         List<BlobStoreFiles.File> files = blobStoreFiles.getFiles();
 
         exchange.getIn().setHeader(COMPLETION_SIZE, files.size());
@@ -221,12 +222,9 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
         );
     }
 
-    private void updateCurrentFile(Exchange exchange) {
-        logger.debug("Updating the current file");
+    private void copyCSVFileAsLatestToConfiguredBucket(Exchange exchange) {
+        logger.debug("Coping latest file to moradin");
         String currentCSVFileName = exchange.getIn().getHeader(OUTPUT_FILENAME_HEADER, String.class) + ".zip";
-        hayaBlobStoreService.uploadBlob(
-                "current",
-                new ByteArrayInputStream(currentCSVFileName.getBytes())
-        );
+        hayaBlobStoreService.copyBlobAsLatestToTargetBucket(currentCSVFileName);
     }
 }

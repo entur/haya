@@ -4,7 +4,5 @@ replicas: 1
 gcs:
   kakka:
     bucketName: kakka-production
-  haya:
-    bucketName: ent-gcs-haya-prd-001
-  haya:
-    bucketName: haya-production
+  moradin:
+    bucketName: moradin-production
