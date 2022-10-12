@@ -22,7 +22,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,8 +86,8 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
 
         from("direct:cacheAdminUnits")
                 .process(this::loadAdminUnitsFile)
-                .process(this::unzipStopPlacesToWorkingDirectory)
-                .process(this::parseStopPlacesNetexFile)
+                .process(this::unzipAdminUnitsToWorkingDirectory)
+                .process(this::parseAdminUnitsNetexFile)
                 .process(this::buildAdminUnitCache);
     }
 
@@ -100,7 +99,7 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
         );
     }
 
-    private void unzipStopPlacesToWorkingDirectory(Exchange exchange) {
+    private void unzipAdminUnitsToWorkingDirectory(Exchange exchange) {
         logger.debug("Unzipping admin units file");
         ZipUtilities.unzipFile(
                 exchange.getIn().getBody(InputStream.class),
@@ -108,17 +107,11 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
         );
     }
 
-    private void parseStopPlacesNetexFile(Exchange exchange) {
-        logger.debug("Parsing the admin units Netex file.");
+    private void parseAdminUnitsNetexFile(Exchange exchange) {
+        logger.debug("Parsing the admin units Netex file");
         var parser = new NetexParser();
         try (Stream<Path> paths = Files.walk(Paths.get(hayaWorkDir + "/adminUnits"))) {
-            paths.filter(Files::isRegularFile).filter(path -> {
-                try {
-                    return !Files.isHidden(path);
-                } catch (IOException e) {
-                    return false;
-                }
-            }).findFirst().ifPresent(path -> {
+            paths.filter(Utilities::isValidFile).findFirst().ifPresent(path -> {
                 try (InputStream inputStream = new FileInputStream(path.toFile())) {
                     exchange.getIn().setBody(parser.parse(inputStream));
                 } catch (Exception e) {
@@ -153,7 +146,7 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
     }
 
     private void unzipPeliasDocumentsCSVFileToWorkingDirectory(Exchange exchange) {
-        logger.debug("Unzipping the file ");
+        logger.debug("Unzipping the file");
         ZipUtilities.unzipFile(
                 exchange.getIn().getBody(InputStream.class),
                 hayaWorkDir + "/pelias-document-csv"
