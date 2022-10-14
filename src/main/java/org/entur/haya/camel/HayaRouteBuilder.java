@@ -88,7 +88,8 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
                 .process(this::setOutputFilenameHeader)
                 .process(this::zipCSVFile)
                 .process(this::uploadCSVFile)
-                .process(this::copyCSVFileAsLatestToConfiguredBucket)
+                // TODO: Uncomment when moradin is ready
+//                .process(this::copyCSVFileAsLatestToConfiguredBucket)
                 .process(exchange -> SpringApplication.exit(context, () -> 0));
 
         from("direct:cacheAdminUnits")
