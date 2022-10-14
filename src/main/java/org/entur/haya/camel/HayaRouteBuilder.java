@@ -17,7 +17,10 @@ import org.entur.netex.NetexParser;
 import org.entur.netex.index.api.NetexEntitiesIndex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
@@ -49,6 +52,9 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
 
     private final KakkaBlobStoreService kakkaBlobStoreService;
     private final HayaBlobStoreService hayaBlobStoreService;
+
+    @Autowired
+    private ApplicationContext context;
 
     public HayaRouteBuilder(
             KakkaBlobStoreService kakkaBlobStoreService,
@@ -82,7 +88,8 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
                 .process(this::setOutputFilenameHeader)
                 .process(this::zipCSVFile)
                 .process(this::uploadCSVFile)
-                .process(this::copyCSVFileAsLatestToConfiguredBucket);
+                .process(this::copyCSVFileAsLatestToConfiguredBucket)
+                .process(exchange -> SpringApplication.exit(context, () -> 0));
 
         from("direct:cacheAdminUnits")
                 .process(this::loadAdminUnitsFile)
