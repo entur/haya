@@ -53,7 +53,7 @@ public final class PeliasCSV {
                 csvHeaders.stream().map(header -> getCSVValueForHeader(peliasDocument, header)),
                 Stream.concat(
                         availableLanguageCodes.stream().map(code -> CSVValue(peliasDocument.getAlternativeNames().get(code))),
-                        availableLanguageCodes.stream().map(code -> CSVValue(peliasDocument.getAlternativeAlias().get(code)))
+                        availableLanguageCodes.stream().map(code -> CSVJsonValue(peliasDocument.getAlternativeAlias().get(code)))
                 )).map(CSVValue::toString).toArray(String[]::new);
     }
 
