@@ -5,4 +5,4 @@ gcs:
   kakka:
     bucketName: kakka-test
   moradin:
-    bucketName: moradin-test
+    bucketName: ent-gcs-moradin-tst-001

@@ -5,4 +5,4 @@ gcs:
   kakka:
     bucketName: kakka-production
   moradin:
-    bucketName: moradin-production
+    bucketName: ent-gcs-moradin-prd-001
