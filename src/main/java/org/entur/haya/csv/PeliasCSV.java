@@ -1,6 +1,7 @@
 package org.entur.haya.csv;
 
 import com.opencsv.CSVWriter;
+import org.entur.geocoder.model.ParentType;
 import org.entur.geocoder.model.PeliasDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ public final class PeliasCSV {
                     LATITUDE, LONGITUDE, ADDRESS_STREET,
                     ADDRESS_NUMBER, ADDRESS_ZIP, POPULARITY,
                     CATEGORY, DESCRIPTION, SOURCE, SOURCE_ID,
-                    LAYER, PARENT, TARIFF_ZONE, TARIFF_ZONE_AUTHORITIES)
+                    LAYER, PARENT/*, TARIFF_ZONE, TARIFF_ZONE_AUTHORITIES*/)
             .toList();
 
     private static final List<String> allHeaders = Stream.concat(
@@ -39,6 +40,7 @@ public final class PeliasCSV {
             try (CSVWriter writer = new CSVWriter(new FileWriter(file.toPath().toString()))) {
                 writer.writeNext(allHeaders.toArray(String[]::new));
                 writer.writeAll(peliasDocuments
+                        .filter(doc -> !doc.getParents().hasParentType(ParentType.UNKNOWN))
                         .map(PeliasCSV::createStringArray)
                         .toList());
             }
@@ -67,8 +69,8 @@ public final class PeliasCSV {
             case NAME -> CSVValue(peliasDocument.getDefaultName());
             case CATEGORY -> peliasDocument.getCategories().isEmpty() ? null : CSVJsonValue(peliasDocument.getCategories());
             case DESCRIPTION -> peliasDocument.getDescriptionMap().isEmpty() ? null : CSVJsonValue(peliasDocument.getDescriptionMap());
-            case TARIFF_ZONE -> peliasDocument.getTariffZones().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZones());
-            case TARIFF_ZONE_AUTHORITIES -> peliasDocument.getTariffZoneAuthorities().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZoneAuthorities());
+//            case TARIFF_ZONE -> peliasDocument.getTariffZones().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZones());
+//            case TARIFF_ZONE_AUTHORITIES -> peliasDocument.getTariffZoneAuthorities().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZoneAuthorities());
             case ALIAS -> peliasDocument.getDefaultAlias() != null ? CSVJsonValue(List.of(peliasDocument.getDefaultAlias())) : null;
             case LATITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lat()) : null;
             case LONGITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lon()) : null;
