@@ -18,4 +18,6 @@ public interface CSVHeaders {
     String SOURCE_ID = "source_id";
     String LAYER = "layer";
     String PARENT = "parent_json";
+    String TARIFF_ZONE = "addendum_json_tariff_zone_ids";
+    String TARIFF_ZONE_AUTHORITIES = "addendum_json_tariff_zone_authorities";
 }

@@ -21,7 +21,7 @@ public final class PeliasCSV {
                     LATITUDE, LONGITUDE, ADDRESS_STREET,
                     ADDRESS_NUMBER, ADDRESS_ZIP, POPULARITY,
                     CATEGORY, DESCRIPTION, SOURCE, SOURCE_ID,
-                    LAYER, PARENT)
+                    LAYER, PARENT, TARIFF_ZONE, TARIFF_ZONE_AUTHORITIES)
             .toList();
 
     private static final List<String> allHeaders = Stream.concat(
@@ -64,9 +64,11 @@ public final class PeliasCSV {
             case TYPE, LAYER -> CSVValue(peliasDocument.getLayer());
             case SOURCE -> CSVValue(peliasDocument.getSource());
             case POPULARITY -> CSVValue(peliasDocument.getPopularity());
-            case CATEGORY -> CSVJsonValue(peliasDocument.getCategories());
-            case DESCRIPTION -> CSVJsonValue(peliasDocument.getDescriptionMap());
             case NAME -> CSVValue(peliasDocument.getDefaultName());
+            case CATEGORY -> peliasDocument.getCategories().isEmpty() ? null : CSVJsonValue(peliasDocument.getCategories());
+            case DESCRIPTION -> peliasDocument.getDescriptionMap().isEmpty() ? null : CSVJsonValue(peliasDocument.getDescriptionMap());
+            case TARIFF_ZONE -> peliasDocument.getTariffZones().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZones());
+            case TARIFF_ZONE_AUTHORITIES -> peliasDocument.getTariffZoneAuthorities().isEmpty() ? null : CSVJsonValue(peliasDocument.getTariffZoneAuthorities());
             case ALIAS -> peliasDocument.getDefaultAlias() != null ? CSVJsonValue(List.of(peliasDocument.getDefaultAlias())) : null;
             case LATITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lat()) : null;
             case LONGITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lon()) : null;

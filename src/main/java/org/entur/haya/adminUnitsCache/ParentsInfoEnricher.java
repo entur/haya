@@ -20,8 +20,6 @@ import org.entur.geocoder.model.GeoPoint;
 import org.entur.geocoder.model.ParentType;
 import org.entur.geocoder.model.Parents;
 import org.entur.geocoder.model.PeliasDocument;
-import org.entur.haya.adminUnitsCache.AdminUnit;
-import org.entur.haya.adminUnitsCache.AdminUnitsCache;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 

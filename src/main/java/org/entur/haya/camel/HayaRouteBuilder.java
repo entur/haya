@@ -173,7 +173,7 @@ public class HayaRouteBuilder extends ErrorHandlerRouteBuilder {
 
     private void readPeliasDocumentsCSVFile(Exchange exchange) {
         Path filePath = exchange.getIn().getBody(Path.class);
-        logger.debug("Read addresses CSV file " + filePath.getFileName());
+        logger.debug("Read CSV file " + filePath.getFileName());
         exchange.getIn().setBody(CSVReader.read(filePath));
     }
 
