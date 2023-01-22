@@ -19,6 +19,7 @@ package org.entur.haya.adminUnitsCache;
 import net.opengis.gml._3.AbstractRingPropertyType;
 import net.opengis.gml._3.DirectPositionListType;
 import net.opengis.gml._3.LinearRingType;
+import org.entur.geocoder.model.PeliasId;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.CoordinateSequence;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -33,9 +34,9 @@ import java.util.Locale;
 import java.util.Optional;
 
 public record AdminUnit(
-        String id,
+        PeliasId id,
         String isoCode,
-        String parentId,
+        PeliasId parentId,
         String name,
         String countryRef,
         Polygon geometry,
@@ -44,9 +45,11 @@ public record AdminUnit(
 
     public static AdminUnit makeAdminUnit(TopographicPlace topographicPlace) {
         return new AdminUnit(
-                topographicPlace.getId(),
+                PeliasId.of(topographicPlace.getId()),
                 topographicPlace.getIsoCode(),
-                topographicPlace.getParentTopographicPlaceRef() != null ? topographicPlace.getParentTopographicPlaceRef().getRef() : null,
+                topographicPlace.getParentTopographicPlaceRef() != null
+                        ? PeliasId.of(topographicPlace.getParentTopographicPlaceRef().getRef())
+                        : null,
                 topographicPlace.getDescriptor().getName().getValue(),
                 topographicPlace.getCountryRef().getRef().name(),
                 new GeometryFactory().createPolygon(convertToCoordinateSequence(topographicPlace.getPolygon().getExterior())),

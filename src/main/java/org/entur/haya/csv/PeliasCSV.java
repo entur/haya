@@ -1,6 +1,7 @@
 package org.entur.haya.csv;
 
 import com.opencsv.CSVWriter;
+import org.entur.geocoder.model.ParentFields;
 import org.entur.geocoder.model.ParentType;
 import org.entur.geocoder.model.PeliasDocument;
 import org.slf4j.Logger;
@@ -8,9 +9,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.entur.geocoder.model.Parents.wrapValidParentFieldsInLists;
 import static org.entur.haya.csv.CSVHeaders.*;
 
 public final class PeliasCSV {
@@ -61,10 +63,10 @@ public final class PeliasCSV {
 
     private static CSVValue getCSVValueForHeader(PeliasDocument peliasDocument, String header) {
         CSVValue csvValue = switch (header) {
-            case ID, SOURCE_ID -> CSVValue(peliasDocument.getSourceId());
+            case ID, SOURCE_ID -> CSVValue(peliasDocument.getPeliasId().id());
             case INDEX -> CSVValue(peliasDocument.getIndex());
-            case TYPE, LAYER -> CSVValue(peliasDocument.getLayer());
-            case SOURCE -> CSVValue(peliasDocument.getSource());
+            case TYPE, LAYER -> CSVValue(peliasDocument.getPeliasId().layer());
+            case SOURCE -> CSVValue(peliasDocument.getPeliasId().source());
             case POPULARITY -> CSVValue(peliasDocument.getPopularity());
             case NAME -> CSVValue(peliasDocument.getDefaultName());
             case CATEGORY -> peliasDocument.getCategories().isEmpty() ? null : CSVJsonValue(peliasDocument.getCategories());
@@ -74,7 +76,7 @@ public final class PeliasCSV {
             case ALIAS -> peliasDocument.getDefaultAlias() != null ? CSVJsonValue(List.of(peliasDocument.getDefaultAlias())) : null;
             case LATITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lat()) : null;
             case LONGITUDE -> peliasDocument.getCenterPoint() != null ? CSVValue(peliasDocument.getCenterPoint().lon()) : null;
-            case PARENT -> peliasDocument.getParents() != null ? CSVJsonValue(wrapValidParentFieldsInLists(peliasDocument.getParents().parents())) : null;
+            case PARENT -> peliasDocument.getParents() != null ? CSVJsonValue(transformParentFieldsToPeliasParent(peliasDocument.getParents().parents())) : null;
             case ADDRESS_STREET -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().street()) : null;
             case ADDRESS_NUMBER -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().number()) : null;
             case ADDRESS_ZIP -> peliasDocument.getAddressParts() != null ? CSVValue(peliasDocument.getAddressParts().zip()) : null;
@@ -85,6 +87,25 @@ public final class PeliasCSV {
 
     private static String makeCsvHeaderForLanguageCode(String prefix, String languageCode) {
         return prefix + "_" + languageCode;
+    }
+
+    /**
+     * See the comments on following PR to learn why we need to wrap parent fields in lists.
+     * https://github.com/pelias/csv-importer/pull/97#issuecomment-1203920795
+     */
+    public static Map<String, List<PeliasParent>> transformParentFieldsToPeliasParent(Map<ParentType, ParentFields> parentFields) {
+        return parentFields.entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                        entry -> entry.getKey().value(),
+                        entry -> List.of(new PeliasParent(entry.getValue())))
+                );
+    }
+
+    record PeliasParent(String source, String id, String name, String abbr) {
+        public PeliasParent(ParentFields parentFields) {
+            this(parentFields.peliasId().source(), parentFields.peliasId().id(), parentFields.name(), parentFields.abbr());
+        }
     }
 
     private static CSVValue CSVValue(Object value) {
